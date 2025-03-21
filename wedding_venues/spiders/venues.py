@@ -1,8 +1,7 @@
 import scrapy
 import logging
-import re  # For extracting guest capacity numbers
+import re  
 
-# Enable debug logging
 logging.basicConfig(level=logging.DEBUG)
 
 class VenuesSpider(scrapy.Spider):
@@ -13,35 +12,62 @@ class VenuesSpider(scrapy.Spider):
 
     def parse(self, response):
         logging.debug(f"Parsing page: {response.url}")
-        
-        # Extract venue detail URLs using CSS
-        for venue_link in response.css("a[href*='/venue/']::attr(href)").getall():
-            detail_url = response.urljoin(venue_link)  # Convert relative URL to absolute URL
-            logging.debug(f"Found detail URL: {detail_url}")
+
+        # Extract venue detail URLs
+        venue_links = response.css("a[href*='/venue/']::attr(href)").getall()
+        for venue_link in venue_links:
+            detail_url = response.urljoin(venue_link)
+            logging.debug(f"Found venue: {detail_url}")
             yield scrapy.Request(detail_url, callback=self.parse_venue)
 
-        # Handle pagination using CSS
-        next_page = response.css("a.pagination-next::attr(href)").get()
-        if next_page:
-            logging.debug(f"Found next page: {next_page}")
-            yield response.follow(next_page, self.parse)
+        # Extract total number of pages from pagination
+        page_numbers = response.css("button[aria-current='false']::text").getall()
+        if page_numbers:
+            last_page_number = int(page_numbers[-1])  # Get last available page number
+        else:
+            last_page_number = 1  # Default to 1 if no pagination found
+
+        # Extract the current page number
+        current_page = response.css("button[aria-current='true']::text").get()
+        if current_page:
+            current_page_number = int(current_page)
+        else:
+            current_page_number = 1  # Default to 1
+
+        # If there is another page, follow it
+        if current_page_number < last_page_number:
+            next_page_number = current_page_number + 1
+            next_page_url = self.generate_next_page_url(response.url, next_page_number)
+            logging.info(f"Following next page: {next_page_url}")
+            yield scrapy.Request(next_page_url, callback=self.parse)
+
+    def generate_next_page_url(self, current_url, next_page_number):
+        """Generate the next page URL by replacing the 'sr=' parameter."""
+        import urllib.parse
+
+        parsed_url = urllib.parse.urlparse(current_url)
+        query_params = urllib.parse.parse_qs(parsed_url.query)
+
+        # Update page number
+        query_params["sr"] = [str(next_page_number)]
+
+        # Reconstruct URL
+        updated_query = urllib.parse.urlencode(query_params, doseq=True)
+        next_page_url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}?{updated_query}"
+
+        return next_page_url
 
     def parse_venue(self, response):
         logging.debug(f"Parsing venue detail page: {response.url}")
 
-        # Extract venue details using CSS
         venue_name = response.css("h1::text").get()
-
-        # Extract phone number
         phone = response.css("a[href^='tel:']::attr(href)").get()
         if phone:
             phone = phone.replace('tel:', '').strip()
 
-        # Extract venue highlights using CSS
         venue_highlights = response.css(".VenueHighlights--label::text").getall()
         venue_highlights = [highlight.strip() for highlight in venue_highlights if highlight.strip()]
 
-        # Extract Guest Capacity using CSS
         guest_capacity_text = response.css(".guest-capacity .value::text").get()
         guest_capacity = None
         if guest_capacity_text:
@@ -49,7 +75,6 @@ class VenuesSpider(scrapy.Spider):
             if match:
                 guest_capacity = match.group()
 
-        # Extract Address using CSS
         address_part1 = response.css(".location p:nth-of-type(1)::text").get()
         address_part2 = response.css(".location p:nth-of-type(2)::text").get()
         address = None
@@ -60,10 +85,8 @@ class VenuesSpider(scrapy.Spider):
         elif address_part2:
             address = address_part2.strip()
 
-        # Log extracted details for debugging
         logging.debug(f"Extracted venue: {venue_name}, Phone: {phone}, Highlights: {venue_highlights}, Guest Capacity: {guest_capacity}, Address: {address}")
 
-        # Yield the extracted data
         yield {
             'url': response.url,
             'venue_name': venue_name,
