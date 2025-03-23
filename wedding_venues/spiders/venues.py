@@ -65,17 +65,21 @@ class VenuesSpider(scrapy.Spider):
         if phone:
             phone = phone.replace('tel:', '').strip()
 
-        venue_highlights = response.css(".VenueHighlights--label::text").getall()
+        venue_highlights = response.css(".header_venueHighlights__zdWMf *::text").getall()
         venue_highlights = [highlight.strip() for highlight in venue_highlights if highlight.strip()]
-
-        guest_capacity_text = response.css(".guest-capacity .value::text").get()
+        
+            
+        guest_capacity_text = response.css(".ShortInfo_capacity__1jfEs p::text").get()
         guest_capacity = None
         if guest_capacity_text:
             match = re.search(r'\d+', guest_capacity_text)
             if match:
                 guest_capacity = match.group()
-
-        address_part1 = response.css(".location p:nth-of-type(1)::text").get()
+                
+                
+        #address = response.css(".header_socialLink__62cYD ::text").getall()
+        #address = " ".join(part.strip() for part in address if part.strip())
+        address_part1 = response.css(".header_socialLink__62cYD ::text").get()
         address_part2 = response.css(".location p:nth-of-type(2)::text").get()
         address = None
         if address_part1 and address_part2:
@@ -84,6 +88,8 @@ class VenuesSpider(scrapy.Spider):
             address = address_part1.strip()
         elif address_part2:
             address = address_part2.strip()
+        
+
 
         logging.debug(f"Extracted venue: {venue_name}, Phone: {phone}, Highlights: {venue_highlights}, Guest Capacity: {guest_capacity}, Address: {address}")
 
